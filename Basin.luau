@@ -26,13 +26,13 @@ export type BasinProperties = {
 	--[Properties]--
 	Size: number,
 	Pool: {ObjectClass},
+	ItemType: any,
 	Directory: Folder?,
 	
 	--[Methods]--
 	New:			(ItemType: any, Amount: number) -> (BasinClass?, Success, Reason?),
 	Pull:			(Amount: number?) -> (ObjectClass? | {ObjectClass}?, Success, Reason?),
 	Reserve:	(Amount: number) -> (Success, Reason?),
-	Cleanup:  (Amount: number) -> (Success, Reason?),
 	Destroy:	()							 -> (Success, Reason?)
 }
 export type BasinClass = typeof(setmetatable(
@@ -101,6 +101,7 @@ function Basin.New(ItemType: any, Amount: number): (BasinClass?, Success, Reason
 	self.Size = Amount
 	self.Pool = {}
 	self.Directory = Directory
+	self.ItemType = ItemType
 
 	local CurrentObjectCount: number = 1
 	local Pool = self.Pool
@@ -156,18 +157,45 @@ end
 --[[
 	Updates the size of the basin. Note that shrinking the basin will result in objects
 	being destroyed if they do not fit into the new basin size.	
+
+	Note that by "update", this means the size of the basin will be set to the new amount.
 ]]
 function Basin:Reserve(Amount: number): (Success, Reason?)
-	return false, Reject("Failed to change the reserves of the target ObjectPool to " .. tostring(Amount) .. "!")
-end
+	if not Amount or Amount < 1 then return false, Reject("Reserve amount cannot be set to a value less than one.") end
 
---[[
-	Removes the amount of objects you specified that aren't InUse.
-	Cleanup avoids objects that are InUse, regardless of if it can or cannot
-	reach the specified amount or not. If this happens, it will return "false".
-]]
-function Basin:Cleanup(Amount: number): (Success, Reason?)
-	return false, Reject("Failed to clean up " .. tostring(Amount) .. " objects the target ObjectPool!")
+	local Pool: {ObjectClass} = self.Pool
+	if Amount > self.Size then
+		local ItemType: any = self.ItemType
+		local ObjCreated: number = 0
+
+		while ObjCreated < (Amount - self.Size) do
+			local ObjSuccess: Success, Obj: ObjectClass? = Object.New(ItemType, self)
+			if not ObjSuccess then return false, Reject("Failed to create object of item type '" .. tostring(self.ItemType) .. "' while changing reserve size.") end
+			Pool[#Pool + 1] = Obj :: ObjectClass
+			ObjCreated += 1
+		end
+
+		return true
+	end
+
+	const clear: typeof(table.clear) = table.clear
+	const remove: typeof(table.remove) = table.remove
+	local ObjRemoved: number = 0
+	for Index: number, Obj: ObjectClass in pairs(Pool) do
+		
+		if not Obj.Item:IsA("Instance") then Object.Item = nil end
+		if Obj.Item then Obj.Item:Destroy() end
+
+		clear(self)	
+		remove(Pool, Index)
+		ObjRemoved += 1
+	end
+
+	if ObjRemoved == Amount then
+		return true
+	end
+
+	return false, Reject("Failed to change the reserves of the target ObjectPool to " .. tostring(Amount) .. "!")
 end
 
 --[[
