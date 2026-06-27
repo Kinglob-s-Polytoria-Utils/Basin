@@ -186,7 +186,6 @@ function Basin:Reserve(Amount: number): (Success, Reason?)
 		if not Obj.Item:IsA("Instance") then Object.Item = nil end
 		if Obj.Item then Obj.Item:Destroy() end
 
-		clear(self)	
 		remove(Pool, Index)
 		ObjRemoved += 1
 	end
@@ -202,6 +201,22 @@ end
 	Destroys the basin's contents, directory, and itself.
 ]]
 function Basin:Destroy(): (Success, Reason?)
+	self.Directory:Destroy()
+
+	const clear: typeof(table.clear) = table.clear
+	const remove: typeof(table.remove) = table.remove
+	for Index: number, Obj: ObjectClass in pairs(self.Pool) do
+		if Obj.Item then
+			if Obj.Item:IsA("Instance") then Obj.Item:Destroy() end
+			Obj.Item = nil
+		end
+
+		remove(self.Pool, Index)
+	end
+
+	clear(self)
+	if self == nil then return true end
+
 	return false, Reject("Failed to destroy the target ObjectPool!")
 end
 
