@@ -103,7 +103,7 @@ function Basin.New(ItemType: any, Amount: number): (BasinClass?, Success, Reason
 	self.Directory = Directory
 	self.ItemType = ItemType
 
-	local CurrentObjectCount: number = 1
+	local CurrentObjectCount: number = 0
 	local Pool = self.Pool
 	while CurrentObjectCount < Amount do
 		local 
@@ -122,7 +122,7 @@ end
 	Default amount is 1, so the first and only argument can remain empty if the user desires.
 ]]
 function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, Reason?)
-	if Amount < 0 then return nil, false, Reject("Cannot pull a negative number of objects!") end
+	if not Amount or Amount < 0 then return nil, false, Reject("Cannot pull a negative number of objects!") end
 	local AmountToPull: number = Amount or 1
 	
 	local Pulled: {ObjectClass} | ObjectClass = {}
@@ -131,6 +131,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 	local Pool: {ObjectClass} = self.Pool
 	local Index: number = 1
 	while AmountPulled < AmountToPull do
+		if Index > #Pool then return nil, false, Reject("Not enough avaliable objects in pool to pull " .. tostring(Amount) .. " objects!") end
 		local Obj: ObjectClass = Pool[Index]
 
 		if Obj.InUse then 
@@ -142,6 +143,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 			Pulled = Obj
 			Obj.InUse = true
 			AmountPulled = 1
+			break
 		end
 
 		Obj.InUse = true
@@ -150,7 +152,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 		AmountPulled += 1
 	end
 	
-	if #Pulled < 1 then return Pulled, true end
+	if AmountPulled == AmountToPull then return Pulled, true end
 	return nil, false, Reject("Failed to pull " .. tostring(Amount or 1) .. " objects from ObjectPool!")
 end
 
@@ -180,17 +182,24 @@ function Basin:Reserve(Amount: number): (Success, Reason?)
 
 	const clear: typeof(table.clear) = table.clear
 	const remove: typeof(table.remove) = table.remove
+
 	local ObjRemoved: number = 0
-	for Index: number, Obj: ObjectClass in pairs(Pool) do
+	local ToRemove: number = (#Pool - Amount)
+	local Index: number = #Pool
+
+	while ObjRemoved < ToRemove and Index >= 1 do
+		local Obj = Pool[Index]
 		
-		if not Obj.Item:IsA("Instance") then Object.Item = nil end
-		if Obj.Item then Obj.Item:Destroy() end
+		if Obj.Item:IsA("Instance") then Obj.Item:Destroy() end
+		Obj.Item = nil
 
 		remove(Pool, Index)
 		ObjRemoved += 1
+		Index -= 1
 	end
 
-	if ObjRemoved == Amount then
+	if ObjRemoved == ToRemove then
+		self.Size = Amount
 		return true
 	end
 
@@ -215,9 +224,7 @@ function Basin:Destroy(): (Success, Reason?)
 	end
 
 	clear(self)
-	if self == nil then return true end
-
-	return false, Reject("Failed to destroy the target ObjectPool!")
+	return true
 end
 
 return Basin
