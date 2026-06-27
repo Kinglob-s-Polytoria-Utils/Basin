@@ -15,10 +15,10 @@ local Basin = require(path.to.Basin)
 local Object: Part = Part.New()
 local PoolSize: number = 50
 
-local ObjectPoolSuccess, ObjectPool = Basin.New(Object, PoolSize)
+local ObjectPool = Basin.New(Object, PoolSize)
 
 -- Pull an object from the object pool!
-local PullSuccess, PulledObject = ObjectPool:Pull()
+local PulledObject = ObjectPool:Pull()
 local PulledPart = PulledObject.Item
 
 -- Do things to it!
