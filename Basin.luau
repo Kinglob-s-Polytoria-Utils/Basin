@@ -20,6 +20,9 @@ export type ObjectProperties = {
 	IsUnanchored: boolean,
 	IsInstance: boolean,
 	IsPhysical: boolean,
+	IsNPC: boolean,
+	isParticles: boolean,
+	ToggleAnchor: boolean,
 	Item: any,
 
 	--[Methods]--
@@ -66,12 +69,15 @@ function Object.New(ItemType: any, Basin: BasinClass): (Success, ObjectClass?, R
 	self.Item.Parent = Basin.Directory
 	self.InUse = false
 	self.IsUnanchored = false
-	self.IsPhysical = self.Item:IsA("Physical")
-	self.IsInstance = self.IsPhysical or self.Item:IsA("Instance")
+	self.IsPhysical = ItemType:IsA("Physical")
+	self.IsInstance = self.IsPhysical or ItemType:IsA("Instance")
+	self.IsNPC = ItemType:IsA("NPC")
+	self.isParticles = ItemType:IsA("Particles")
 
 	if self.IsPhysical then
-		self.IsUnanchored = ItemType.Anchor
-		self.Item.Anchor = true
+		self.IsUnanchored = ItemType.Anchored
+		self.Item.Anchored = true
+		self.ToggleAnchor = not self.IsUnanchored
 	end
 	
 	return true, self
@@ -87,13 +93,13 @@ end
 	to the directory.
 ]]
 function Object:Push(): (Success, Reason?)
-	if self.IsUnanchored and self.IsPhysical then self.Item.Anchor = false end
+	if not self.IsUnanchored and self.IsPhysical then self.Item.Anchored = false end
 
 	self.Item.Parent = self.ParentBasin.Directory
 	self.InUse = false
 	
-	if self.Item:IsA("NPC") then self.Item:Respawn() end
-	if self.Item:IsA("Particles") then self.Item:Stop() end
+	if self.IsNPC then self.Item:Respawn() end
+	if self.isParticles then self.Item:Stop() end
 
 	local AvaliableObjs: {ObjectClass} = self.ParentBasin.AvaliableObjs
 	AvaliableObjs[#AvaliableObjs + 1] = self
@@ -163,26 +169,27 @@ end
 ]]
 function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, Reason?)
 	if not self.AvaliableObjs then return nil, false, Log("No avaliable objects found in the object pool!") end
+	local AvaliableObjs: {ObjectClass} = self.AvaliableObjs
 
-	local AvaliableObjsCount: number = #self.AvaliableObjs
+	local AvaliableObjsCount: number = #AvaliableObjs
 	local AmountToPull: number = Amount or 1
 	if Amount < 0 then return nil, false, Log("Cannot pull a negative number of objects!") end
 	if AmountToPull > AvaliableObjsCount then return nil, false, Log("Not enough avaliable objects in pool to pull " .. tostring(Amount) .. " objects!") end
 	
 	if AmountToPull == 1 then
-		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount]
-		self.AvaliableObjs[AvaliableObjsCount] = nil
+		local Obj: ObjectClass = AvaliableObjs[AvaliableObjsCount]
+		AvaliableObjs[AvaliableObjsCount] = nil
 		Obj.InUse = true
-		if Obj.IsUnanchored and Obj.IsPhysical then Obj.Item.Anchor = false end
+		if Obj.ToggleAnchor then Obj.Item.Anchored = false end
 		return Obj, true
 	end
 	
 	local Pulled: {ObjectClass} | ObjectClass = createtable(AmountToPull)
 	for index = 1, AmountToPull do
-		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount - index + 1]
-		self.AvaliableObjs[AvaliableObjsCount] = nil
+		local Obj: ObjectClass = AvaliableObjs[AvaliableObjsCount - index + 1]
+		AvaliableObjs[AvaliableObjsCount] = nil
 		Obj.InUse = true
-		if Obj.IsUnanchored and Obj.IsPhysical then Obj.Item.Anchor = false end
+		if Obj.ToggleAnchor then Obj.Item.Anchored = false end
 		Pulled[#Pulled + 1] = Obj
 	end
 
