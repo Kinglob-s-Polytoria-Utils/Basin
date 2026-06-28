@@ -18,6 +18,8 @@ export type ObjectProperties = {
 	InUse: boolean,
 	ParentBasin: BasinClass,
 	IsUnanchored: boolean,
+	IsInstance: boolean,
+	IsPhysical: boolean,
 	Item: any,
 
 	--[Methods]--
@@ -63,10 +65,14 @@ function Object.New(ItemType: any, Basin: BasinClass): (Success, ObjectClass?, R
 	self.Item = ItemType:Clone()
 	self.Item.Parent = Basin.Directory
 	self.InUse = false
-	self.IsUnanchored = ItemType.Anchored
+	self.IsUnanchored = false
+	self.IsPhysical = self.Item:IsA("Physical")
+	self.IsInstance = self.IsPhysical or self.Item:IsA("Instance")
 
-	self.Item.Anchored = true
-	if self.Item:IsA("Particles") then self.Item:Stop() end
+	if self.IsPhysical then
+		self.IsUnanchored = ItemType.Anchor
+		self.Item.Anchor = true
+	end
 	
 	return true, self
 end
@@ -81,7 +87,7 @@ end
 	to the directory.
 ]]
 function Object:Push(): (Success, Reason?)
-	if self.IsUnanchored then self.Item.Anchored = false end
+	if self.IsUnanchored and self.IsPhysical then self.Item.Anchor = false end
 
 	self.Item.Parent = self.ParentBasin.Directory
 	self.InUse = false
@@ -128,7 +134,7 @@ function Basin.New(ItemType: any, Amount: number, isShared: boolean?): (BasinCla
 
 	local CreationTime: number = floor(getcreatetime() * 1000)
 	local Directory: Folder = Folder.New()
-	Directory.Parent = if isClient or Shared then world.Hidden.ObjectPools else world.serverHidden.ObjectPools
+	Directory.Parent = if isClient or Shared then world.Hidden.ObjectPools else world.ServerHidden.ObjectPools
 	Directory.Name = tostring(CreationTime)
 
 	self.Size = Amount
@@ -167,7 +173,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount]
 		self.AvaliableObjs[AvaliableObjsCount] = nil
 		Obj.InUse = true
-		if Obj.IsUnanchored then Obj.Item.Anchored = false end
+		if Obj.IsUnanchored and Obj.IsPhysical then Obj.Item.Anchor = false end
 		return Obj, true
 	end
 	
@@ -176,7 +182,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount - index + 1]
 		self.AvaliableObjs[AvaliableObjsCount] = nil
 		Obj.InUse = true
-		if Obj.IsUnanchored then Obj.Item.Anchored = false end
+		if Obj.IsUnanchored and Obj.IsPhysical then Obj.Item.Anchor = false end
 		Pulled[#Pulled + 1] = Obj
 	end
 
@@ -217,7 +223,7 @@ function Basin:Reserve(Amount: number): (Success, Reason?)
 	while ObjRemoved < ToRemove and Index >= 1 do
 		local Obj = Pool[Index]
 		
-		if Obj.Item:IsA("Instance") then Obj.Item:Destroy() end
+		if Obj.IsInstance then Obj.Item:Destroy() end
 		Obj.Item = nil
 
 		remove(Pool, Index)
@@ -238,7 +244,7 @@ end
 ]]
 function Basin:Destroy(): (Success, Reason?)
 	for Index: number, Obj: ObjectClass in ipairs(self.Pool) do
-		if Obj.Item:IsA("Instance") then Obj.Item:Destroy() end
+		if Obj.IsInstance then Obj.Item:Destroy() end
 		Obj.Item = nil
 	end
 
