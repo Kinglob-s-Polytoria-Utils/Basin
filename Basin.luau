@@ -92,8 +92,8 @@ Basin.__index = Basin
 	Creates a new basin with the specified item type and the amount of objects.
 	Returns nil and false if it goes wrong.
 
-	Setting a objectpool to be shared will allow clients to modify it however
-	they like with it replicating to the server. Please use with extreme care.
+	Setting a objectpool to be shared will place it into Hidden instead of
+	ServerHidden, if made on the server.
 
 	Default isShared value is false.
 ]]
