@@ -2,6 +2,12 @@
 type Success	= boolean
 type Reason		= string
 
+--[Cached functions]--
+local createtable: typeof(table.create) = table.create
+local cleartable: typeof(table.clear) = table.clear
+local getcreatetime: typeof(os.clock) = os.clock
+local floor: typeof(math.floor) = math.floor
+
 local function Log(Reason: Reason): Reason
 	print(string.format("[Basin]: %s", Reason))
 	return Reason
@@ -27,6 +33,7 @@ export type BasinProperties = {
 	--[Properties]--
 	Size: number,
 	Pool: {ObjectClass},
+	AvaliableObjs: {ObjectClass},
 	ItemType: any,
 	Directory: Folder?,
 	
@@ -78,9 +85,12 @@ function Object:Push(): (Success, Reason?)
 
 	self.Item.Parent = self.ParentBasin.Directory
 	self.InUse = false
-
+	
 	if self.Item:IsA("NPC") then self.Item:Respawn() end
 	if self.Item:IsA("Particles") then self.Item:Stop() end
+
+	local AvaliableObjs: {ObjectClass} = self.ParentBasin.AvaliableObjs
+	AvaliableObjs[#AvaliableObjs + 1] = self
 
 	return true
 end
@@ -116,7 +126,7 @@ function Basin.New(ItemType: any, Amount: number, isShared: boolean?): (BasinCla
 		ObjectPoolsFolder.Parent = world.ServerHidden
 	end
 
-	local CreationTime: number = math.floor(os.clock() * 1000)
+	local CreationTime: number = floor(getcreatetime() * 1000)
 	local Directory: Folder = Folder.New()
 	Directory.Parent = if isClient or Shared then world.Hidden.ObjectPools else world.serverHidden.ObjectPools
 	Directory.Name = tostring(CreationTime)
@@ -127,12 +137,14 @@ function Basin.New(ItemType: any, Amount: number, isShared: boolean?): (BasinCla
 	
 	local CurrentObjectCount: number = 0
 	self.Pool = {}
+	self.AvaliableObjs = {}
 	while CurrentObjectCount < Amount do
 		local 
 			ObjSuccess: Success, 
 			Obj: ObjectClass? = Object.New(ItemType, self)
 		if not ObjSuccess then return nil, false, Log("Failed to create object of item type '" .. tostring(ItemType) .. "'!") end
 		self.Pool[#self.Pool + 1] = Obj :: ObjectClass
+		self.AvaliableObjs[#self.AvaliableObjs + 1] = Obj :: ObjectClass
 		CurrentObjectCount += 1
 	end
 
@@ -144,39 +156,31 @@ end
 	Default amount is 1, so the first and only argument can remain empty if the user desires.
 ]]
 function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, Reason?)
-	if not self.Pool then return nil, false, Log("Pool in ObjectPool is nil.") end
-	
+	if not self.AvaliableObjs then return nil, false, Log("No avaliable objects found in the object pool!") end
+
+	local AvaliableObjsCount: number = #self.AvaliableObjs
 	local AmountToPull: number = Amount or 1
 	if Amount < 0 then return nil, false, Log("Cannot pull a negative number of objects!") end
+	if AmountToPull > AvaliableObjsCount then return nil, false, Log("Not enough avaliable objects in pool to pull " .. tostring(Amount) .. " objects!") end
 	
-	local Pulled: {ObjectClass} | ObjectClass = {}
-	local AmountPulled: number = 0
-
-	local Index: number = 1
-	while AmountPulled < AmountToPull do
-		if Index > #self.Pool then return nil, false, Log("Not enough avaliable objects in pool to pull " .. tostring(Amount) .. " objects!") end
-		local Obj: ObjectClass = self.Pool[Index]
-
-		if Obj.InUse then 
-			Index += 1
-			continue
-		end
-
-		if AmountToPull == 1 then
-			Pulled = Obj
-			Obj.InUse = true
-			AmountPulled = 1
-			break
-		end
-
+	if AmountToPull == 1 then
+		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount]
+		self.AvaliableObjs[AvaliableObjsCount] = nil
 		Obj.InUse = true
-		Pulled[#Pulled + 1] = Obj
-		Index += 1
-		AmountPulled += 1
+		if Obj.IsUnanchored then Obj.Item.Anchored = false end
+		return Obj, true
 	end
 	
-	if AmountPulled == AmountToPull then return Pulled, true end
-	return nil, false, Log("Failed to pull " .. tostring(Amount or 1) .. " objects from ObjectPool!")
+	local Pulled: {ObjectClass} | ObjectClass = createtable(AmountToPull)
+	for index = 1, AmountToPull do
+		local Obj: ObjectClass = self.AvaliableObjs[AvaliableObjsCount - index + 1]
+		self.AvaliableObjs[AvaliableObjsCount] = nil
+		Obj.InUse = true
+		if Obj.IsUnanchored then Obj.Item.Anchored = false end
+		Pulled[#Pulled + 1] = Obj
+	end
+
+	return Pulled, true
 end
 
 --[[
@@ -233,15 +237,14 @@ end
 	Destroys the basin's contents, directory, and itself.
 ]]
 function Basin:Destroy(): (Success, Reason?)
-	local clear: typeof(table.clear) = table.clear
-	for Index: number, Obj: ObjectClass in pairs(self.Pool) do
+	for Index: number, Obj: ObjectClass in ipairs(self.Pool) do
 		if Obj.Item:IsA("Instance") then Obj.Item:Destroy() end
 		Obj.Item = nil
 	end
 
-	clear(self.Pool)
+	cleartable(self.Pool)
 	self.Directory:Destroy()
-	clear(self)
+	cleartable(self)
 	return true
 end
 
