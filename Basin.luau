@@ -11,6 +11,7 @@ export type ObjectProperties = {
 	--[Properties]--
 	InUse: boolean,
 	ParentBasin: BasinClass,
+	IsUnanchored: boolean,
 	Item: any,
 
 	--[Methods]--
@@ -30,7 +31,7 @@ export type BasinProperties = {
 	Directory: Folder?,
 	
 	--[Methods]--
-	New:			(ItemType: any, Amount: number) -> (BasinClass?, Success, Reason?),
+	New:			(ItemType: any, Amount: number, isShared: boolean?) -> (BasinClass?, Success, Reason?),
 	Pull:			(Amount: number?) -> (ObjectClass? | {ObjectClass}?, Success, Reason?),
 	Reserve:	(Amount: number) -> (Success, Reason?),
 	Destroy:	()							 -> (Success, Reason?)
@@ -55,6 +56,10 @@ function Object.New(ItemType: any, Basin: BasinClass): (Success, ObjectClass?, R
 	self.Item = ItemType:Clone()
 	self.Item.Parent = Basin.Directory
 	self.InUse = false
+	self.IsUnanchored = ItemType.Anchored
+
+	self.Item.Anchored = true
+	if self.Item:IsA("Particles") then self.Item:Stop() end
 	
 	return true, self
 end
@@ -69,9 +74,14 @@ end
 	to the directory.
 ]]
 function Object:Push(): (Success, Reason?)
+	if self.IsUnanchored then self.Item.Anchored = false end
+
 	self.Item.Parent = self.ParentBasin.Directory
 	self.InUse = false
-	--TODO: Add detection for if it's a particle emitter or NPC
+
+	if self.Item:IsA("NPC") then self.Item:Respawn() end
+	if self.Item:IsA("Particles") then self.Item:Stop() end
+
 	return true
 end
 
@@ -81,24 +91,34 @@ Basin.__index = Basin
 --[[
 	Creates a new basin with the specified item type and the amount of objects.
 	Returns nil and false if it goes wrong.
+
+	Setting a objectpool to be shared will allow clients to modify it however
+	they like with it replicating to the server. Please use with extreme care.
+
+	Default isShared value is false.
 ]]
-function Basin.New(ItemType: any, Amount: number): (BasinClass?, Success, Reason?)
+function Basin.New(ItemType: any, Amount: number, isShared: boolean?): (BasinClass?, Success, Reason?)
 	local self: BasinClass = setmetatable(
 		{} :: BasinProperties,
 		Basin
 	)
+	
+	local isClient: boolean = if Players.LocalPlayer then true else false
+	local Shared: boolean = isShared or false
 
-	--TODO: add checks for if the pool is made on the client or server
-	--		then, add a objectpools folder in either serverhidden or hidden
-	if not world.Hidden.ObjectPools then 
+	if not world.Hidden.ObjectPools and isClient then 
 		local ObjectPoolsFolder = Folder.New()	
 		ObjectPoolsFolder.Name = "ObjectPools"
 		ObjectPoolsFolder.Parent = world.Hidden
+	elseif not world.Hidden.ObjectPoolsFolder and not isClient then
+		local ObjectPoolsFolder = Folder.New()	
+		ObjectPoolsFolder.Name = "ObjectPools"
+		ObjectPoolsFolder.Parent = world.ServerHidden
 	end
 
 	local CreationTime: number = math.floor(os.clock() * 1000)
 	local Directory: Folder = Folder.New()
-	Directory.Parent = world.Hidden.ObjectPools
+	Directory.Parent = if isClient or Shared then world.Hidden.ObjectPools else world.serverHidden.ObjectPools
 	Directory.Name = tostring(CreationTime)
 
 	self.Size = Amount
