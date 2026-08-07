@@ -187,7 +187,7 @@ function Basin:Pull(Amount: number?): (ObjectClass? | {ObjectClass}?, Success, R
 	local Pulled: {ObjectClass} | ObjectClass = createtable(AmountToPull)
 	for index = 1, AmountToPull do
 		local Obj: ObjectClass = AvaliableObjs[AvaliableObjsCount - index + 1]
-		AvaliableObjs[AvaliableObjsCount] = nil
+		AvaliableObjs[AvaliableObjsCount - index + 1] = nil
 		Obj.InUse = true
 		if Obj.ToggleAnchor then Obj.Item.Anchored = false end
 		Pulled[#Pulled + 1] = Obj
